@@ -6,6 +6,7 @@ import com.itm.apiCalendario.model.Tipo;
 import com.itm.apiCalendario.repository.CalendarioRepository;
 import com.itm.apiCalendario.repository.TipoRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -13,7 +14,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class CalendarioService {
@@ -34,6 +34,7 @@ public class CalendarioService {
         this.festivoClienteService = festivoClienteService;
     }
 
+    @Transactional
     public boolean generar(int anio) {
         List<FestivoDTO> festivos = festivoClienteService.obtenerFestivos(anio);
 
@@ -80,6 +81,7 @@ public class CalendarioService {
         return true;
     }
 
+    @Transactional(readOnly = true)
     public List<Calendario> listar(int anio) {
         LocalDate inicio = LocalDate.of(anio, 1, 1);
         LocalDate fin = LocalDate.of(anio, 12, 31);
