@@ -1,0 +1,108 @@
+# Orquestación de los microservicios API Festivos y API Calendario
+# Red de contenedores: redcalendario
+#
+#   dockerbdfestivos    -> MongoDB    (BD de la API Festivos)
+#   dockerapifestivos   -> Node.js    (API Festivos)       -> http://localhost:8082
+#   dockerbdcalendario  -> PostgreSQL (BD de la API Calendario)
+#   dockerapicalendario -> Spring Boot (API Calendario)    -> http://localhost:8083
+#
+# Levantar todo:  docker compose up -d --build
+# Apagar todo:    docker compose down
+
+services:
+
+  # ---------- Contenedor BD MongoDB ----------
+  dockerbdfestivos:
+    image: mongo:7
+    container_name: dockerbdfestivos
+    restart: unless-stopped
+    volumes:
+      - datos_festivos:/data/db
+    networks:
+      - redcalendario
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Carga inicial de festivos en MongoDB (se ejecuta una vez y termina) ----------
+  seedfestivos:
+    build: ./apiFestivos
+    container_name: seedfestivos
+    command: ["node", "src/utils/seed.js"]
+    environment:
+      MONGO_URI: mongodb://dockerbdfestivos:27017/festivosdb
+    depends_on:
+      dockerbdfestivos:
+        condition: service_healthy
+    networks:
+      - redcalendario
+    restart: "no"
+
+  # ---------- Contenedor MicroServicio apiFestivos ----------
+  dockerapifestivos:
+    build: ./apiFestivos
+    container_name: dockerapifestivos
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      MONGO_URI: mongodb://dockerbdfestivos:27017/festivosdb
+    ports:
+      - "8082:8080"
+    depends_on:
+      dockerbdfestivos:
+        condition: service_healthy
+      seedfestivos:
+        condition: service_completed_successfully
+    networks:
+      - redcalendario
+
+  # ---------- Contenedor BD Calendario (Postgres) ----------
+  dockerbdcalendario:
+    image: postgres:16
+    container_name: dockerbdcalendario
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: calendariodb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin123
+    volumes:
+      - datos_calendario:/var/lib/postgresql/data
+    networks:
+      - redcalendario
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d calendariodb"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------- Contenedor MicroServicio apiCalendario ----------
+  dockerapicalendario:
+    build: ./apiCalendario
+    container_name: dockerapicalendario
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://dockerbdcalendario:5432/calendariodb
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: admin123
+      FESTIVOS_API_URL: http://dockerapifestivos:8080/api/festivos
+    ports:
+      - "8083:8081"
+    depends_on:
+      dockerbdcalendario:
+        condition: service_healthy
+      dockerapifestivos:
+        condition: service_started
+    networks:
+      - redcalendario
+
+networks:
+  redcalendario:
+    name: redcalendario
+    driver: bridge
+
+volumes:
+  datos_festivos:
+  datos_calendario:
